@@ -1,18 +1,23 @@
-# 사용자별 도시를 메모리에 기억 (v1: 메모리, v2: 파일 저장으로 확장 예정)
-user_city: dict[int, str] = {}
+import requests
+import os
+from dotenv import load_dotenv
 
-CLEAN_WORDS = ["여긴", "여기는", "사는 곳은", "도시는", "도시", "이야", "야", "입니다", "에요"]
+load_dotenv()
+WEATHER_KEY = os.getenv("WEATHER_KEY")
 
-def clean_city_text(text: str) -> str:
-    s = text.strip()
-    for w in CLEAN_WORDS:
-        s = s.replace(w, "")
-    return s.strip()
+def get_weather(city_name: str) -> str:
+    """
+    도시 이름을 입력받아 현재 날씨 정보를 문자열로 반환하는 함수
+    """
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={WEATHER_KEY}&units=metric&lang=kr"
+    res = requests.get(url)
 
-def set_city(user_id: int, text: str) -> str:
-    city = clean_city_text(text)
-    user_city[user_id] = city
-    return city
+    if res.status_code != 200:
+        return "❌ 날씨 정보를 가져올 수 없습니다."
 
-def get_city(user_id: int) -> str | None:
-    return user_city.get(user_id)
+    data = res.json()
+    temp = data["main"]["temp"]
+    desc = data["weather"][0]["description"]
+
+    return f"{city_name}의 현재 온도는 {temp}°C, 날씨는 {desc}입니다."
+

@@ -73,3 +73,21 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+import asyncio
+
+async def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    print("🤖 운동코치봇 실행 중…")
+    await app.run_polling()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except RuntimeError:
+        # Windows 환경에서 event loop 관련 버그 방지
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main())
+
