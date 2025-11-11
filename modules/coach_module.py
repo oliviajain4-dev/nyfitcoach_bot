@@ -38,3 +38,18 @@ def build_coach_message(weather_main: str, temp: float) -> str:
         "🌤️ 무난한 날씨!\n"
         "🏃 달리기 30분 + 🧘 스트레칭 10분 + 💪 근력 10분 추천!"
     )
+
+from telegram import Update
+from telegram.ext import ContextTypes
+
+async def build_coach_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.lower()
+
+    if "안녕" in text:
+        await update.message.reply_text("안녕하세요! 💪 운동할 준비 됐나요?")
+    elif "운동" in text:
+        await update.message.reply_text("좋아요! 오늘은 10분 스트레칭부터 시작해볼까요?")
+    elif "날씨" in text:
+        await update.message.reply_text("오늘 날씨가 어떤지 알려드릴까요? ☀️")
+    else:
+        await update.message.reply_text("음... 무슨 말인지 모르겠어요 😅\n'운동', '날씨', '위치' 중 하나로 말해보세요!")
