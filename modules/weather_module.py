@@ -1,23 +1,73 @@
+# -------------------------------
+# modules/weather_module.py
+# -------------------------------
 import requests
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
-WEATHER_KEY = os.getenv("WEATHER_KEY")
+# ✅ 주요 지역 한글 → 좌표 매핑 (읍/면/동 지원)
+CITY_COORDS = {
+    "성남시 수정구": (37.4386, 127.1378),
+    "성남시 중원구": (37.4325, 127.1315),
+    "성남시 분당구": (37.3786, 127.1176),
+    "달성군 다사읍": (35.8664, 128.4586),
+    "서울": (37.5665, 126.9780),
+    "부산": (35.1796, 129.0756),
+    "대구": (35.8714, 128.6014),
+    "인천": (37.4563, 126.7052),
+    "광주": (35.1595, 126.8526),
+    "대전": (36.3504, 127.3845),
+    "울산": (35.5384, 129.3114),
+    "수원": (37.2636, 127.0286),
+    "창원시 의창구": (35.2416, 128.6811),
+    "제주시": (33.4996, 126.5312),
+    "제주도": (33.4996, 126.5312),
+}
 
-def get_weather(city_name: str) -> str:
+def get_weather(city: str, WEATHER_KEY: str) -> str:
     """
-    도시 이름을 입력받아 현재 날씨 정보를 문자열로 반환하는 함수
+    도시 이름(city)을 위도/경도로 자동 변환하여 날씨 정보를 가져옴.
+    - 비, 눈, 천둥, 폭염, 한파 감지
+    - 오류 시 사용자에게 안내 메시지 반환
     """
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={WEATHER_KEY}&units=metric&lang=kr"
-    res = requests.get(url)
+    try:
+        # 🔎 1️⃣ 도시 좌표 찾기
+        coords = CITY_COORDS.get(city.strip())
+        if not coords:
+            return f"❌ '{city}'는 등록되지 않은 지역이에요.\n예: 성남시 수정구, 대구, 제주도"
 
-    if res.status_code != 200:
-        return "❌ 날씨 정보를 가져올 수 없습니다."
+        lat, lon = coords
 
-    data = res.json()
-    temp = data["main"]["temp"]
-    desc = data["weather"][0]["description"]
+        # 🌦️ 2️⃣ OpenWeather API 요청 (좌표 기반)
+        url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_KEY}&units=metric&lang=kr"
+        res = requests.get(url, timeout=5)
 
-    return f"{city_name}의 현재 온도는 {temp}°C, 날씨는 {desc}입니다."
+        if res.status_code != 200:
+            return f"⚠️ {city}의 날씨 정보를 가져올 수 없습니다. (응답 코드: {res.status_code})"
 
+        data = res.json()
+        temp = data.get("main", {}).get("temp")
+        desc = data.get("weather", [{}])[0].get("description", "정보 없음")
+
+        # 🧊 3️⃣ 온도 누락 시
+        if temp is None:
+            return f"⚠️ {city}의 온도 데이터를 불러올 수 없습니다."
+
+        # 🌤️ 4️⃣ 기상 경고 메시지 자동 생성
+        alerts = []
+        if any(k in desc for k in ["비", "소나기", "rain"]):
+            alerts.append("☔ 비가 오니까 우산 챙기기!")
+        if any(k in desc for k in ["눈", "snow"]):
+            alerts.append("❄️ 눈이 내려요, 미끄러지지 않게 조심해요!")
+        if "천둥" in desc or "thunder" in desc.lower():
+            alerts.append("⚡ 천둥·번개 주의! 외출은 피하는 게 좋아요.")
+        if temp <= 0:
+            alerts.append("🥶 한파 주의! 실내 운동 추천이에요.")
+        if temp >= 27:
+            alerts.append("🥵 더운 날씨예요! 수분 자주 섭취해요.")
+
+        # ✨ 5️⃣ 결과 메시지 구성
+        alert_text = "\n".join(alerts)
+        base_msg = f"📍 {city}의 현재 온도는 {temp:.1f}°C, 날씨는 {desc}입니다."
+        return f"{base_msg}\n{alert_text if alert_text else '🌤️ 오늘은 운동하기 좋은 날씨예요!'}"
+
+    except requests.exceptions.RequestException:
+        return f"🚨 {city}의 날씨 정보를 불러오는 중 오류가 발생했습니다."
