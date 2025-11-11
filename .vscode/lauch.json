@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run NYFITCOACH Bot",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/_main.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Run Geocoding Test",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/test/test_geocoding.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}
