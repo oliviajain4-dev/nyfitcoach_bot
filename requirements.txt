@@ -1,6 +1,17 @@
-fastapi
-uvicorn
-requests
+# --- Core Server ---
+fastapi==0.110.0
+uvicorn==0.23.2
+nest_asyncio==1.5.8
+
+# --- API & Networking ---
+requests==2.31.0
 python-telegram-bot==20.6
-nest_asyncio
-streamlit
+python-dotenv==1.0.0
+
+# --- Web UI (optional for monitoring / local dashboard) ---
+streamlit==1.31.0
+
+# --- Optional Utility Packages ---
+aiohttp==3.9.5
+pytz==2024.1
+Pillow==10.2.0
