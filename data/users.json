@@ -5,5 +5,12 @@
     "exercise": "달리기",
     "notify_time": "05:00",
     "tone": "coach"
+  },
+  "나연": {
+    "name": null,
+    "location": null,
+    "exercise": null,
+    "notify_time": null,
+    "tone": "friendly"
   }
 }

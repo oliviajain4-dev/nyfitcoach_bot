@@ -1,73 +1,129 @@
 # -------------------------------
 # modules/weather_module.py
 # -------------------------------
-import requests
+import os, requests, random
+from datetime import datetime, timedelta
+from PIL import Image, ImageDraw, ImageFont
+from config.env import WEATHER_KEY
+from modules.youtube_module import get_random_video
 
-# ✅ 주요 지역 한글 → 좌표 매핑 (읍/면/동 지원)
-CITY_COORDS = {
-    "성남시 수정구": (37.4386, 127.1378),
-    "성남시 중원구": (37.4325, 127.1315),
-    "성남시 분당구": (37.3786, 127.1176),
-    "달성군 다사읍": (35.8664, 128.4586),
-    "서울": (37.5665, 126.9780),
-    "부산": (35.1796, 129.0756),
-    "대구": (35.8714, 128.6014),
-    "인천": (37.4563, 126.7052),
-    "광주": (35.1595, 126.8526),
-    "대전": (36.3504, 127.3845),
-    "울산": (35.5384, 129.3114),
-    "수원": (37.2636, 127.0286),
-    "창원시 의창구": (35.2416, 128.6811),
-    "제주시": (33.4996, 126.5312),
-    "제주도": (33.4996, 126.5312),
+OUTFIT_DIR = "data/outfits"
+TEMP_DIR = "temp"
+os.makedirs(TEMP_DIR, exist_ok=True)
+
+CITY_MAP = {
+    "성남시 수정구": "Seongnam", "성남시 중원구": "Seongnam", "성남시 분당구": "Seongnam",
+    "서울": "Seoul", "부산": "Busan", "대구": "Daegu", "인천": "Incheon",
+    "광주": "Gwangju", "대전": "Daejeon", "울산": "Ulsan", "제주": "Jeju"
 }
 
-def get_weather(city: str, WEATHER_KEY: str) -> str:
-    """
-    도시 이름(city)을 위도/경도로 자동 변환하여 날씨 정보를 가져옴.
-    - 비, 눈, 천둥, 폭염, 한파 감지
-    - 오류 시 사용자에게 안내 메시지 반환
-    """
+# ===== 날씨 이모지 매핑 =====
+def get_weather_icon(desc: str) -> str:
+    desc = desc.lower()
+    if any(k in desc for k in ["맑", "clear"]): return "☀️"
+    if any(k in desc for k in ["구름", "cloud"]): return "🌤️"
+    if any(k in desc for k in ["비", "rain", "소나기"]): return "🌧️"
+    if any(k in desc for k in ["눈", "snow"]): return "❄️"
+    if any(k in desc for k in ["번개", "thunder"]): return "⛈️"
+    if any(k in desc for k in ["안개", "fog", "mist"]): return "🌫️"
+    return "🌈"
+
+# ===== 오늘 날씨 =====
+def get_weather(city_kr: str) -> dict:
+    city_en = CITY_MAP.get(city_kr.strip(), city_kr)
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={city_en}&appid={WEATHER_KEY}&units=metric&lang=kr"
+    res = requests.get(url, timeout=5)
+    data = res.json()
+    desc = data["weather"][0]["description"]
+    return {
+        "city": city_kr,
+        "temp": round(data["main"]["temp"], 1),
+        "feels": round(data["main"]["feels_like"], 1),
+        "desc": desc,
+        "icon": get_weather_icon(desc)
+    }
+
+# ===== 내일 예보 =====
+def get_tomorrow_weather(city_kr: str) -> dict:
+    city_en = CITY_MAP.get(city_kr.strip(), city_kr)
+    url = f"http://api.openweathermap.org/data/2.5/forecast?q={city_en}&appid={WEATHER_KEY}&units=metric&lang=kr"
+    res = requests.get(url, timeout=5)
+    data = res.json()
+    target = next((item for item in data["list"] if "12:00:00" in item["dt_txt"]), None)
+    if not target:
+        target = data["list"][8] if len(data["list"]) > 8 else data["list"][0]
+    desc = target["weather"][0]["description"]
+    return {
+        "temp": round(target["main"]["temp"], 1),
+        "desc": desc,
+        "icon": get_weather_icon(desc)
+    }
+
+# ===== 복장 + 운동 추천 =====
+def recommend_outfit(temp: float, desc: str) -> dict:
+    indoor_keywords = ["비","눈","소나기","thunder","rain","snow"]
+    outdoor_good = (10 <= temp <= 26) and not any(k in desc for k in indoor_keywords)
+    exercise_text = "🌤 실외운동 (산책, 자전거, 달리기, 축구)" if outdoor_good else "🏠 실내운동 (요가, 홈트, 스트레칭)"
+    outfit_text = (
+        "☔ 방수 자켓 + 운동화" if "비" in desc
+        else "⛄ 따뜻한 방한복" if "눈" in desc
+        else "😎 반팔 + 반바지" if temp >= 25
+        else "🍂 긴팔 트레이닝복" if 15 <= temp < 25
+        else "🧤 기모 트레이닝복" if 5 <= temp < 15
+        else "🥶 패딩 + 장갑"
+    )
+    return {"outfit": outfit_text, "exercise": exercise_text, "is_outdoor": outdoor_good}
+
+# ===== 이미지 선택 =====
+def select_outfit_image(temp: float, desc: str) -> str:
+    if "비" in desc: return os.path.join(OUTFIT_DIR, "rain.png")
+    if "눈" in desc: return os.path.join(OUTFIT_DIR, "snow.png")
+    if temp >= 25: return os.path.join(OUTFIT_DIR, "summer.png")
+    if 15 <= temp < 25: return os.path.join(OUTFIT_DIR, "autumn.png")
+    if 5 <= temp < 15: return os.path.join(OUTFIT_DIR, "winter.png")
+    return os.path.join(OUTFIT_DIR, "heavy_winter.png")
+
+# ===== 카드 생성 =====
+def build_outfit_card(user_name: str, city: str):
+    today = get_weather(city)
+    tomorrow = get_tomorrow_weather(city)
+    reco = recommend_outfit(today["temp"], today["desc"])
+    category = "요가" if not reco["is_outdoor"] else "스트레칭"
+    video = get_random_video(category)
+
+    img_path = select_outfit_image(today["temp"], today["desc"])
+    img = Image.open(img_path).convert("RGBA")
+    draw = ImageDraw.Draw(img)
     try:
-        # 🔎 1️⃣ 도시 좌표 찾기
-        coords = CITY_COORDS.get(city.strip())
-        if not coords:
-            return f"❌ '{city}'는 등록되지 않은 지역이에요.\n예: 성남시 수정구, 대구, 제주도"
+        font_title = ImageFont.truetype("arialbd.ttf", 40)
+        font_info = ImageFont.truetype("arial.ttf", 26)
+    except:
+        font_title = ImageFont.load_default()
+        font_info = ImageFont.load_default()
 
-        lat, lon = coords
+    title = f"{user_name}'s Weather & Workout 🩵"
+    info = f"{today['icon']} {today['temp']}°C / {today['desc']} / 체감 {today['feels']}°C"
+    outfit_line = reco["outfit"]
+    exercise_line = reco["exercise"]
+    tomorrow_line = f"{tomorrow['icon']} 내일: {tomorrow['temp']}°C / {tomorrow['desc']}"
 
-        # 🌦️ 2️⃣ OpenWeather API 요청 (좌표 기반)
-        url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_KEY}&units=metric&lang=kr"
-        res = requests.get(url, timeout=5)
+    draw.rectangle([(30, 30), (img.width - 30, 240)], fill=(255, 255, 255, 230))
+    draw.text((50, 50), title, fill=(40, 40, 60), font=font_title)
+    draw.text((50, 100), info, fill=(40, 40, 60), font=font_info)
+    draw.text((50, 140), outfit_line, fill=(20, 20, 20), font=font_info)
+    draw.text((50, 180), exercise_line, fill=(20, 40, 80), font=font_info)
+    draw.text((50, 215), tomorrow_line, fill=(70, 60, 100), font=font_info)
 
-        if res.status_code != 200:
-            return f"⚠️ {city}의 날씨 정보를 가져올 수 없습니다. (응답 코드: {res.status_code})"
+    output_path = os.path.join(TEMP_DIR, f"{user_name}_outfit.png")
+    img.save(output_path)
 
-        data = res.json()
-        temp = data.get("main", {}).get("temp")
-        desc = data.get("weather", [{}])[0].get("description", "정보 없음")
-
-        # 🧊 3️⃣ 온도 누락 시
-        if temp is None:
-            return f"⚠️ {city}의 온도 데이터를 불러올 수 없습니다."
-
-        # 🌤️ 4️⃣ 기상 경고 메시지 자동 생성
-        alerts = []
-        if any(k in desc for k in ["비", "소나기", "rain"]):
-            alerts.append("☔ 비가 오니까 우산 챙기기!")
-        if any(k in desc for k in ["눈", "snow"]):
-            alerts.append("❄️ 눈이 내려요, 미끄러지지 않게 조심해요!")
-        if "천둥" in desc or "thunder" in desc.lower():
-            alerts.append("⚡ 천둥·번개 주의! 외출은 피하는 게 좋아요.")
-        if temp <= 0:
-            alerts.append("🥶 한파 주의! 실내 운동 추천이에요.")
-        if temp >= 27:
-            alerts.append("🥵 더운 날씨예요! 수분 자주 섭취해요.")
-
-        # ✨ 5️⃣ 결과 메시지 구성
-        alert_text = "\n".join(alerts)
-        base_msg = f"📍 {city}의 현재 온도는 {temp:.1f}°C, 날씨는 {desc}입니다."
-        return f"{base_msg}\n{alert_text if alert_text else '🌤️ 오늘은 운동하기 좋은 날씨예요!'}"
-
-    except requests.exceptions.RequestException:
-        return f"🚨 {city}의 날씨 정보를 불러오는 중 오류가 발생했습니다."
+    caption = (
+        f"{today['icon']} 오늘의 날씨 ({city})\n"
+        f"🌡 {today['temp']}°C / {today['desc']} / 체감 {today['feels']}°C\n\n"
+        f"👕 복장: {reco['outfit']}\n"
+        f"💪 운동: {reco['exercise']}\n\n"
+        f"🎬 추천 영상 ({category})\n"
+        f"{video['title']}\n👉 {video['link']}\n\n"
+        f"{tomorrow['icon']} 내일: {tomorrow['temp']}°C / {tomorrow['desc']}"
+    )
+    return output_path, caption
